@@ -1,0 +1,7 @@
+/Users/xujianxin/ai_project/hevc_extractor/build/CMakeFiles/hevc_analyzer.dir
+/Users/xujianxin/ai_project/hevc_extractor/build/CMakeFiles/edit_cache.dir
+/Users/xujianxin/ai_project/hevc_extractor/build/CMakeFiles/rebuild_cache.dir
+/Users/xujianxin/ai_project/hevc_extractor/build/CMakeFiles/list_install_components.dir
+/Users/xujianxin/ai_project/hevc_extractor/build/CMakeFiles/install.dir
+/Users/xujianxin/ai_project/hevc_extractor/build/CMakeFiles/install/local.dir
+/Users/xujianxin/ai_project/hevc_extractor/build/CMakeFiles/install/strip.dir
