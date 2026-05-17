@@ -8,56 +8,53 @@
 #include "vps_parser.h"
 #include "frame_analyzer.h"
 #include "macroblock_analyzer.h"
+#include <map>
 
 class HEVCParser {
 public:
     HEVCParser();
     ~HEVCParser();
-    
-    // 打开并解析 HEVC 码流文件
+
     bool openFile(const std::string& filePath);
-    
-    // 解析下一个 NAL 单元
     bool parseNextNALUnit(NALUnit& nalUnit);
-    
-    // 分析当前 NAL 单元
     void analyzeNALUnit(const NALUnit& nalUnit);
-    
-    // 关闭文件
     void closeFile();
-    
-    // 输出码流信息摘要
     void printSummary();
-    
+
+    // For HEIF support: process pre-extracted NAL units
+    void analyzeExtractedNALUnit(const NALUnit& nalUnit);
+
 private:
-    // 文件指针
     FILE* fp;
-    
-    // 解析器组件
+
     NALUnitParser nalParser;
     VPSParser vpsParser;
     SPSParser spsParser;
     PPSParser ppsParser;
     FrameAnalyzer frameAnalyzer;
     MacroblockAnalyzer mbAnalyzer;
-    
-    // 解析状态
+
     bool fileOpened;
-    
-    // 存储解析结果
+
+    // Store latest parsed parameter sets
     VPSInfo vpsInfo;
-    SPSInfo spsInfo;
-    PPSInfo ppsInfo;
+    // SPS/PPS maps keyed by ID for slice header cross-referencing
+    std::map<uint8_t, SPSInfo> spsMap;
+    std::map<uint8_t, PPSInfo> ppsMap;
+    SPSInfo latestSPS;
+    PPSInfo latestPPS;
     FrameInfo frameInfo;
     std::vector<MacroblockInfo> mbInfos;
-    
-    // 统计信息
+
+    // Statistics
     uint32_t nalUnitCount;
     uint32_t vpsCount;
     uint32_t spsCount;
     uint32_t ppsCount;
     uint32_t frameCount;
     uint32_t mbCount;
+    uint32_t seiCount;
+    uint32_t audCount;
 };
 
 #endif // HEVC_PARSER_H

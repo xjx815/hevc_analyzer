@@ -1,4 +1,5 @@
 #include "macroblock_analyzer.h"
+#include "bit_stream_reader.h"
 #include <iostream>
 
 MacroblockAnalyzer::MacroblockAnalyzer() {
@@ -7,107 +8,65 @@ MacroblockAnalyzer::MacroblockAnalyzer() {
 MacroblockAnalyzer::~MacroblockAnalyzer() {
 }
 
-uint8_t MacroblockAnalyzer::readBit(const uint8_t* data, size_t size, size_t bitPos) {
-    size_t bytePos = bitPos / 8;
-    size_t bitInByte = bitPos % 8;
-    
-    if (bytePos >= size) {
-        return 0;
-    }
-    
-    return (data[bytePos] >> (7 - bitInByte)) & 0x01;
-}
-
-uint32_t MacroblockAnalyzer::readBits(const uint8_t* data, size_t size, size_t& bitPos, uint8_t bitCount) {
-    uint32_t result = 0;
-    for (uint8_t i = 0; i < bitCount; i++) {
-        result = (result << 1) | readBit(data, size, bitPos);
-        bitPos++;
-    }
-    return result;
-}
-
-uint32_t MacroblockAnalyzer::parseExpGolomb(const uint8_t* data, size_t size, size_t& bitPos) {
-    // 计算前导零的个数
-    uint8_t leadingZeros = 0;
-    while (leadingZeros < 32 && bitPos < size * 8 && readBit(data, size, bitPos) == 0) {
-        leadingZeros++;
-        bitPos++;
-    }
-    
-    // 读取后续的 bits
-    uint32_t codeNum = 0;
-    if (leadingZeros > 0) {
-        codeNum = readBits(data, size, bitPos, leadingZeros);
-        codeNum += (1 << leadingZeros) - 1;
-    }
-    
-    return codeNum;
-}
-
-bool MacroblockAnalyzer::analyzeMacroblock(const NALUnit& nalUnit, const FrameInfo& frameInfo, std::vector<MacroblockInfo>& mbInfos) {
-    // 检查是否为切片类型的 NAL 单元
+bool MacroblockAnalyzer::analyzeMacroblock(const NALUnit& nalUnit, const FrameInfo& /*frameInfo*/,
+                                            std::vector<MacroblockInfo>& mbInfos,
+                                            const SPSInfo* spsInfo) {
     if (nalUnit.nal_unit_type < NAL_UNIT_SLICE_TRAIL_N || nalUnit.nal_unit_type > NAL_UNIT_SLICE_GDR) {
         return false;
     }
-    
+
     const uint8_t* data = nalUnit.payload.data();
     size_t size = nalUnit.payload.size();
-    size_t bitPos = 0;
-    
-    // 跳过切片头部信息
-    // 1. first_slice_segment_in_pic_flag
-    uint8_t firstSliceSegmentInPicFlag = readBit(data, size, bitPos);
-    bitPos++;
-    
-    // 2. slice_type
-    parseExpGolomb(data, size, bitPos);
-    
-    // 3. pic_parameter_set_id
-    parseExpGolomb(data, size, bitPos);
-    
-    // 4. frame_num
-    uint8_t log2MaxFrameNum = 4 + 4;
-    readBits(data, size, bitPos, log2MaxFrameNum);
-    
-    // 5. 其他字段
-    if (firstSliceSegmentInPicFlag) {
-        // 6. pic_order_cnt_lsb
-        uint8_t log2MaxPicOrderCntLsb = 4 + 4;
-        readBits(data, size, bitPos, log2MaxPicOrderCntLsb);
-        
-        // 7. delta_poc_bottom
-        parseExpGolomb(data, size, bitPos);
-        
-        // 8. no_output_of_prior_pics_flag
-        readBit(data, size, bitPos);
-        bitPos++;
-        
-        // 9. long_term_reference_flag
-        readBit(data, size, bitPos);
-        bitPos++;
+    BitStreamReader reader(data, size);
+
+    // Skip slice header (same fields as FrameAnalyzer)
+    uint8_t firstSliceSegmentInPicFlag = reader.readBit();
+    reader.readUE();  // slice_type
+    reader.readUE();  // pic_parameter_set_id
+
+    uint8_t log2MaxFrameNum;
+    if (spsInfo && spsInfo->sps_max_frame_num_minus4 > 0) {
+        log2MaxFrameNum = spsInfo->sps_max_frame_num_minus4 + 4;
+    } else {
+        log2MaxFrameNum = 8;
     }
-    
-    // 10. adaptive_ref_pic_marking_mode_flag
-    readBit(data, size, bitPos);
-    bitPos++;
-    
-    // 11. slice_header_extension_present_flag
-    readBit(data, size, bitPos);
-    bitPos++;
-    
-    // 简化实现：模拟宏块信息
-    // 在实际应用中，需要根据 HEVC 标准解析具体的宏块数据
-    
-    // 假设一帧有 16x16 个宏块
-    const int numMBs = 16 * 16;
+    reader.readBits(log2MaxFrameNum);  // frame_num
+
+    if (firstSliceSegmentInPicFlag) {
+        uint8_t log2MaxPicOrderCntLsb;
+        if (spsInfo && spsInfo->log2_max_pic_order_cnt_lsb_minus4 > 0) {
+            log2MaxPicOrderCntLsb = spsInfo->log2_max_pic_order_cnt_lsb_minus4 + 4;
+        } else {
+            log2MaxPicOrderCntLsb = 8;
+        }
+        reader.readBits(log2MaxPicOrderCntLsb);  // pic_order_cnt_lsb
+        reader.readSE();  // delta_poc_bottom
+        reader.readBit(); // no_output_of_prior_pics_flag
+        reader.readBit(); // long_term_reference_flag
+    }
+
+    reader.readBit(); // adaptive_ref_pic_marking_mode_flag
+    reader.readBit(); // slice_header_extension_present_flag
+
+    // Macroblock data — simulated (actual CTU/CU parsing is complex)
+    // Use pic dimensions from SPS to estimate CTU count if available
+    int numMBs = 16 * 16;
+    if (spsInfo && spsInfo->pic_width_in_luma_samples > 0 && spsInfo->pic_height_in_luma_samples > 0) {
+        // HEVC uses 64x64 CTUs; estimate count
+        int ctusX = (spsInfo->pic_width_in_luma_samples + 63) / 64;
+        int ctusY = (spsInfo->pic_height_in_luma_samples + 63) / 64;
+        numMBs = ctusX * ctusY;
+        if (numMBs < 1) numMBs = 1;
+        if (numMBs > 4096) numMBs = 4096; // reasonable upper bound
+    }
+
     mbInfos.reserve(numMBs);
-    
+
     for (int i = 0; i < numMBs; i++) {
         MacroblockInfo mbInfo;
         mbInfo.mb_addr = i;
-        mbInfo.mb_type = i % 4; // 模拟不同的宏块类型
-        mbInfo.pred_mode = i % 2; // 0: 帧内预测, 1: 帧间预测
+        mbInfo.mb_type = i % 4;
+        mbInfo.pred_mode = i % 2;
         mbInfo.ref_idx_l0 = i % 3;
         mbInfo.ref_idx_l1 = i % 2;
         mbInfo.mv_l0[0] = (i - numMBs/2) * 2;
@@ -116,21 +75,20 @@ bool MacroblockAnalyzer::analyzeMacroblock(const NALUnit& nalUnit, const FrameIn
         mbInfo.mv_l1[1] = (i - numMBs/2);
         mbInfo.coded_block_pattern = i % 256;
         mbInfo.qp = 20 + (i % 10);
-        
+
         mbInfos.push_back(mbInfo);
     }
-    
+
     return true;
 }
 
 void MacroblockAnalyzer::printMacroblockInfo(const std::vector<MacroblockInfo>& mbInfos) {
     std::cout << "Macroblock Information:" << std::endl;
     std::cout << "  Total Macroblocks: " << mbInfos.size() << std::endl;
-    
-    // 只输出前几个宏块的信息，避免输出过多
+
     const int maxMBsToPrint = 10;
     int numMBsToPrint = std::min((int)mbInfos.size(), maxMBsToPrint);
-    
+
     for (int i = 0; i < numMBsToPrint; i++) {
         const MacroblockInfo& mbInfo = mbInfos[i];
         std::cout << "  MB " << i << ":" << std::endl;
@@ -144,10 +102,10 @@ void MacroblockAnalyzer::printMacroblockInfo(const std::vector<MacroblockInfo>& 
         std::cout << "    Coded Block Pattern: " << (int)mbInfo.coded_block_pattern << std::endl;
         std::cout << "    QP: " << (int)mbInfo.qp << std::endl;
     }
-    
+
     if (mbInfos.size() > maxMBsToPrint) {
         std::cout << "  ... and " << (mbInfos.size() - maxMBsToPrint) << " more macroblocks" << std::endl;
     }
-    
+
     std::cout << std::endl;
 }

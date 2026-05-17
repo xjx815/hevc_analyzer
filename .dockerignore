@@ -1,0 +1,31 @@
+# 构建目录
+build/
+
+# Git 相关
+.git/
+.gitignore
+.gitattributes
+
+# IDE 相关
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统相关
+.DS_Store
+Thumbs.db
+
+# 文档
+README.md
+LICENSE
+
+# 测试文件（可选，根据需要调整）
+test_*.hevc
+*.hevc
+
+# 临时文件
+*.log
+*.tmp
+result.txt

@@ -86,7 +86,7 @@ typedef struct {
     uint8_t vps_max_layers_minus1;
     uint8_t vps_max_sub_layers_minus1;
     uint8_t vps_temporal_id_nesting_flag;
-    uint8_t vps_reserved_0xffff_16bits;
+    uint16_t vps_reserved_0xffff_16bits;
     uint8_t vps_reserved_0x7f_7bits;
     uint32_t vps_max_dec_pic_buffering_minus1[16];
     uint32_t vps_max_num_reorder_pics[16];

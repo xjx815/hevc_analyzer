@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  hevc-analyzer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hevc-analyzer:latest
+    container_name: hevc-analyzer
+    volumes:
+      # 挂载当前目录到容器的 /input 目录
+      - .:/input
+    working_dir: /app
+    # 默认命令，可以通过 docker-compose run 覆盖
+    command: ["./build/bin/hevc_analyzer", "--help"]
